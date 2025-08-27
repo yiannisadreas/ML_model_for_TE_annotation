@@ -1,0 +1,12 @@
+The project was built in VS Code, but the basic requirements/libraries for the scripts are:
+  matplotlib
+  seaborn
+  tensor.nn
+  pytorch
+  pandas
+  numpy
+  sklearn
+  Bio
+  os
+  subprocess
+  etc.
