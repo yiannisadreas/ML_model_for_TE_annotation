@@ -18,5 +18,5 @@ I propose that anyone who wants to use the code in this repository do the same o
 
 1. Clone the repo:
 ```bash
-git clone https://github.com/YOUR_USERNAME/REPO_NAME.git
-cd REPO_NAME
+git clone https://github.com/yiannisadreas/ML_model_for_TE_annotation.git
+cd ML_model_for_TE_annotation
