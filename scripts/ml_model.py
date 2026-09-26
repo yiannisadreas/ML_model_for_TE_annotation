@@ -60,14 +60,6 @@ LTRs_seq, LTRs_labels = load_sequences_from_folder(LTRs_folder, 2, max_len)
 DNA_seq, DNA_labels = load_sequences_from_folder(DNA_folder, 1, max_len)
 non_TE_seq, non_TE_labels = load_sequences_from_folder(non_TE_folder, 0, max_len)
 
-# Weighing the classes
-total = len(DNA_labels) + len(LTRs_labels) + len(non_TE_labels)
-weight_non_TE = total / len(non_TE_labels)
-weight_DNA = total / len(DNA_labels)
-weight_LTR = total / len(LTRs_labels)
-
-class_weights = torch.tensor([weight_non_TE, weight_DNA, weight_LTR], dtype=torch.float32).to(device)
-
 min_class_size = min(len(DNA_seq), len(LTRs_seq), len(non_TE_seq))
 
 DNA_seq_sampled, DNA_labels_sampled = resample(
@@ -92,19 +84,30 @@ non_TE_seq_sampled, non_TE_labels_sampled = resample(
 X_data = DNA_seq_sampled + LTRs_seq_sampled + non_TE_seq_sampled
 y_data = DNA_labels_sampled + LTRs_labels_sampled + non_TE_labels_sampled
 
-X_train, X_test, y_train, y_test = train_test_split(X_data, y_data, train_size=0.8, test_size=0.2, random_state=42, stratify=y_data)
+# Split into train / validation / test (70 / 15 / 15).
+# The validation split picks the best checkpoint; the test split is only used once at the end.
+X_train, X_temp, y_train, y_temp = train_test_split(X_data, y_data, train_size=0.7, test_size=0.3, random_state=42, stratify=y_data)
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, train_size=0.5, test_size=0.5, random_state=42, stratify=y_temp)
+
+# Weighing the classes (inverse frequency in the training split)
+train_counts = np.bincount(y_train, minlength=3)
+class_weights = torch.tensor(len(y_train) / (3 * train_counts), dtype=torch.float32).to(device)
 
 X_train = torch.tensor(np.array(X_train), dtype=torch.float32)
+X_val = torch.tensor(np.array(X_val), dtype=torch.float32)
 X_test = torch.tensor(np.array(X_test), dtype=torch.float32)
 
 y_train = torch.tensor(y_train, dtype=torch.long)
+y_val = torch.tensor(y_val, dtype=torch.long)
 y_test = torch.tensor(y_test, dtype=torch.long)
 
 
 train_dataset = TensorDataset(X_train, y_train)
+val_dataset = TensorDataset(X_val, y_val)
 test_dataset = TensorDataset(X_test, y_test)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
 model = nn.Sequential(
@@ -128,12 +131,12 @@ model = nn.Sequential(
 	nn.Flatten(),
 
 	nn.Dropout(0.3),
-	nn.Linear(256, 3),
-	nn.Softmax(dim=1)
+	nn.Linear(256, 3)
+	# No Softmax here: CrossEntropyLoss expects raw logits. Apply softmax at inference.
 ).to(device)
 
 
-loss = nn.CrossEntropyLoss(weight=None)
+loss = nn.CrossEntropyLoss(weight=class_weights)
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 best_val_f1 = 0.0
@@ -174,7 +177,7 @@ for epoch in range(num_epochs):
 			# Validation metrics
 			val_preds_list = []
 			val_labels_list = []
-			for batch_X, batch_y in test_loader:
+			for batch_X, batch_y in val_loader:
 				batch_X = batch_X.to(device)
 				preds = model(batch_X)
 				val_preds_list.append(preds.cpu())
@@ -204,28 +207,25 @@ for epoch in range(num_epochs):
 
 			print(classification_report(val_labels, val_predicted_labels, target_names=["non-TE", "DNA", "LTR"]))
 
-cm = confusion_matrix(val_labels, val_predicted_labels)
+# Final evaluation of the best checkpoint on the held-out test split
+model.load_state_dict(torch.load(best_model_path, map_location=device))
+model.eval()
+test_preds_list = []
+test_labels_list = []
+with torch.no_grad():
+	for batch_X, batch_y in test_loader:
+		batch_X = batch_X.to(device)
+		preds = model(batch_X)
+		test_preds_list.append(preds.cpu())
+		test_labels_list.append(batch_y)
+test_preds = torch.cat(test_preds_list)
+test_labels = torch.cat(test_labels_list)
+test_predicted_labels = torch.argmax(test_preds, dim=1)
+print(f"Test F1 of best model (val_f1 {best_val_f1:.4f}): {f1_score(test_labels, test_predicted_labels, average='macro'):.4f}")
+print(classification_report(test_labels, test_predicted_labels, target_names=["non-TE", "DNA", "LTR"]))
+
+cm = confusion_matrix(test_labels, test_predicted_labels)
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["non-TE", "DNA", "LTR"], yticklabels=["non-TE", "DNA", "LTR"])
 plt.xlabel("Predicted")
 plt.ylabel("True")
 plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
