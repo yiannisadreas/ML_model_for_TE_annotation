@@ -26,8 +26,7 @@ for bed_file in os.listdir("/home/andreas/TE_annotation/TEs_bed_files"):
 		if chromosome not in TE_coordinates:
 			TE_coordinates[chromosome] = []
 			chromosomes.append(chromosome)
-		else:
-			TE_coordinates[chromosome].append((start, end))
+		TE_coordinates[chromosome].append((start, end))
 
 
 chromosomes.remove("L")

@@ -28,8 +28,7 @@ model = nn.Sequential(
     nn.AdaptiveMaxPool1d(1),
     nn.Flatten(),
     nn.Dropout(0.3),
-    nn.Linear(256,3),
-    nn.Softmax(dim=1)
+    nn.Linear(256,3)
 ).to(device)
 
 # Load model
@@ -75,7 +74,7 @@ for file in os.listdir(r"C:\Users\yiann\Desktop\projects\TE_annotation\lepidopte
             input_tensor = torch.tensor(one_hot_encode(window_seq)).unsqueeze(0).to(device)
             
             with torch.no_grad():
-                output = model(input_tensor)
+                output = torch.softmax(model(input_tensor), dim=1)  # model outputs logits
                 predicted_class = torch.argmax(output, dim=1).item()
                 confidence = output[0, predicted_class].item()
                 if predicted_class in [1, 2] and confidence > 0.8:  # Threshold for confidence
